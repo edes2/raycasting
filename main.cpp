@@ -7,6 +7,9 @@
 // Screen dimensions
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
+#define MAX_RAY_LENGTH 600.0f
+#define PI 3.14159265358979f
+#define ANGLE_STEP_DEG 0.1f
 
 // Point structure to represent positions
 struct Point
@@ -71,17 +74,59 @@ public:
     }
 };
 
+void drawRay(SDL_Renderer *renderer, float x1, float y1, float angle, float distance)
+{
+    float k = 0.008f;
+
+    float stepSize = 1.0f;
+
+    float stepX = std::cos(angle) * stepSize;
+    float stepY = std::sin(angle) * stepSize;
+    float currentX = x1;
+    float currentY = y1;
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    for (float d = 0.0f; d <= distance; d += stepSize)
+    {
+        float attenuation = expf(-k * d); // Où k est une constante positive
+        attenuation = std::max(0.0f, std::min(1.0f, attenuation));
+        Uint8 alpha = static_cast<Uint8>(attenuation * 255.0f);
+
+        if (alpha == 0)
+        {
+            break;
+        }
+
+        SDL_SetRenderDrawColor(renderer, 255, 255, 102, alpha);
+
+        int drawX = static_cast<int>(currentX);
+        int drawY = static_cast<int>(currentY);
+
+        if (drawX >= 0 && drawX < SCREEN_WIDTH && drawY >= 0 && drawY < SCREEN_HEIGHT)
+        {
+            SDL_RenderDrawPoint(renderer, drawX, drawY);
+        }
+        else
+        {
+            break;
+        }
+        currentX += stepX;
+        currentY += stepY;
+    }
+}
+
 // Function to trace rays in all directions
 void traceRays(SDL_Renderer *renderer, float originX, float originY, const std::vector<Segment> &scene)
 {
-    const int NUM_RAYS = 360; // One ray per degree
-    const float PI = 3.14159265358979;
-    const float MAX_RAY_LENGTH = 1000.0f; // Maximum ray length
+
+    const float ANGLE_STEP_RAD = ANGLE_STEP_DEG * PI / 180.0f;
+
+    // We want to cover 360 degrees
+    const int NUM_RAYS = static_cast<int>(360.0f / ANGLE_STEP_DEG);
 
     for (int i = 0; i < NUM_RAYS; ++i)
     {
         // Calculate the angle for this ray
-        float angle = (i * PI) / 180.0f;
+        float angle = i * ANGLE_STEP_RAD;
 
         // Create a ray at the given angle
         Ray ray(originX, originY, angle);
@@ -105,16 +150,18 @@ void traceRays(SDL_Renderer *renderer, float originX, float originY, const std::
         if (closestDistance < std::numeric_limits<float>::infinity())
         {
             // Draw the ray to the intersection point
-            SDL_SetRenderDrawColor(renderer, 255, 255, 102, 255);
-            SDL_RenderDrawLine(renderer, originX, originY, closestIntersection.x, closestIntersection.y);
+            // SDL_SetRenderDrawColor(renderer, 255, 255, 102, 255);
+            // SDL_RenderDrawLine(renderer, originX, originY, closestIntersection.x, closestIntersection.y);
+            drawRay(renderer, originX, originY, angle, closestDistance);
         }
         else
         {
             // No intersection, draw ray to max length
-            SDL_SetRenderDrawColor(renderer, 255, 255, 102, 255);
-            float endX = originX + std::cos(angle) * MAX_RAY_LENGTH;
-            float endY = originY + std::sin(angle) * MAX_RAY_LENGTH;
-            SDL_RenderDrawLine(renderer, originX, originY, endX, endY);
+            // SDL_SetRenderDrawColor(renderer, 255, 255, 102, 200);
+            // float endX = originX + std::cos(angle) * MAX_RAY_LENGTH;
+            // float endY = originY + std::sin(angle) * MAX_RAY_LENGTH;
+            // SDL_RenderDrawLine(renderer, originX, originY, endX, endY);
+            drawRay(renderer, originX, originY, angle, closestDistance);
         }
     }
 }
