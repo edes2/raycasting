@@ -9,7 +9,13 @@
 #define SCREEN_HEIGHT 600
 #define MAX_RAY_LENGTH 600.0f
 #define PI 3.14159265358979f
-#define ANGLE_STEP_DEG 0.1f
+#define ANGLE_STEP_DEG 0.05f
+
+SDL_Texture *gTexture = nullptr;
+void *gPixels = nullptr;
+int gPitch = 0;
+int gPixelPerRow = 0;
+Uint32 *gPixelBuffer = nullptr;
 
 // Point structure to represent positions
 struct Point
@@ -24,6 +30,17 @@ struct Segment
 
     Segment(float x1, float y1, float x2, float y2)
         : x1(x1), y1(y1), x2(x2), y2(y2) {}
+};
+
+// Define the scene with walls
+std::vector<Segment> scene = {
+    Segment(400, 400, 500, 500),
+    Segment(300, 100, 300, 300),
+    Segment(500, 600, 400, 500),
+    Segment(300, 300, 100, 300),
+    Segment(100, 300, 100, 100),
+    Segment(600, 150, 600, 450), // mur vertical à droite
+    Segment(200, 450, 200, 150)  // mur vertical à gauche
 };
 
 // Ray class to handle ray operations
@@ -74,9 +91,9 @@ public:
     }
 };
 
-void drawRay(SDL_Renderer *renderer, float x1, float y1, float angle, float distance)
+void drawRay(float x1, float y1, float angle, float distance)
 {
-    float k = 0.008f;
+    float k = 0.005f;
 
     float stepSize = 1.0f;
 
@@ -84,7 +101,6 @@ void drawRay(SDL_Renderer *renderer, float x1, float y1, float angle, float dist
     float stepY = std::sin(angle) * stepSize;
     float currentX = x1;
     float currentY = y1;
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     for (float d = 0.0f; d <= distance; d += stepSize)
     {
         float attenuation = expf(-k * d); // Où k est une constante positive
@@ -96,32 +112,43 @@ void drawRay(SDL_Renderer *renderer, float x1, float y1, float angle, float dist
             break;
         }
 
-        SDL_SetRenderDrawColor(renderer, 255, 255, 102, alpha);
+        Uint32 pixelColor = (alpha << 24) | (255 << 16) | (255 << 8) | 102;
 
         int drawX = static_cast<int>(currentX);
         int drawY = static_cast<int>(currentY);
 
-        if (drawX >= 0 && drawX < SCREEN_WIDTH && drawY >= 0 && drawY < SCREEN_HEIGHT)
-        {
-            SDL_RenderDrawPoint(renderer, drawX, drawY);
-        }
-        else
+        if (drawX <= 0 || drawX >= SCREEN_WIDTH || drawY <= 0 || drawY >= SCREEN_HEIGHT)
         {
             break;
         }
+
+        gPixelBuffer[drawY * gPixelPerRow + drawX] = pixelColor;
+
         currentX += stepX;
         currentY += stepY;
     }
 }
 
-// Function to trace rays in all directions
-void traceRays(SDL_Renderer *renderer, float originX, float originY, const std::vector<Segment> &scene)
+void clearTexture()
 {
+    for (int y = 0; y < SCREEN_HEIGHT; ++y)
+    {
+        for (int x = 0; x < SCREEN_WIDTH; ++x)
+        {
+            gPixelBuffer[y * gPixelPerRow + x] = 0xFF000000;
+        }
+    }
+}
 
+// Function to trace rays in all directions
+void traceRays(float originX, float originY)
+{
     const float ANGLE_STEP_RAD = ANGLE_STEP_DEG * PI / 180.0f;
 
     // We want to cover 360 degrees
     const int NUM_RAYS = static_cast<int>(360.0f / ANGLE_STEP_DEG);
+
+    const float stopOffset = 2.0f; // Par exemple, 2 pixels d'offset
 
     for (int i = 0; i < NUM_RAYS; ++i)
     {
@@ -149,30 +176,58 @@ void traceRays(SDL_Renderer *renderer, float originX, float originY, const std::
 
         if (closestDistance < std::numeric_limits<float>::infinity())
         {
-            // Draw the ray to the intersection point
-            // SDL_SetRenderDrawColor(renderer, 255, 255, 102, 255);
-            // SDL_RenderDrawLine(renderer, originX, originY, closestIntersection.x, closestIntersection.y);
-            drawRay(renderer, originX, originY, angle, closestDistance);
+            drawRay(originX, originY, angle, closestDistance);
         }
         else
         {
             // No intersection, draw ray to max length
-            // SDL_SetRenderDrawColor(renderer, 255, 255, 102, 200);
-            // float endX = originX + std::cos(angle) * MAX_RAY_LENGTH;
-            // float endY = originY + std::sin(angle) * MAX_RAY_LENGTH;
-            // SDL_RenderDrawLine(renderer, originX, originY, endX, endY);
-            drawRay(renderer, originX, originY, angle, closestDistance);
+            drawRay(originX, originY, angle, closestDistance);
         }
     }
 }
 
-// Function to render walls in the scene
-void renderScene(SDL_Renderer *renderer, const std::vector<Segment> &scene)
+// Draw a line using Bresenham’s algorithm
+void drawLine(int x1, int y1, int x2, int y2, Uint32 color)
 {
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Wall color
+    int dx = std::abs(x2 - x1);
+    int dy = std::abs(y2 - y1);
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
+    int err = dx - dy;
+
+    while (true)
+    {
+        if (x1 >= 0 && x1 < SCREEN_WIDTH && y1 >= 0 && y1 < SCREEN_HEIGHT)
+            gPixelBuffer[y1 * gPixelPerRow + x1] = color;
+
+        if (x1 == x2 && y1 == y2)
+            break;
+
+        int e2 = 2 * err;
+        if (e2 > -dy)
+        {
+            err -= dy;
+            x1 += sx;
+        }
+        if (e2 < dx)
+        {
+            err += dx;
+            y1 += sy;
+        }
+    }
+}
+
+void drawWalls()
+{
+    // Draw all walls on the same locked texture:
     for (const Segment &wall : scene)
     {
-        SDL_RenderDrawLine(renderer, wall.x1, wall.y1, wall.x2, wall.y2);
+        // Draw this wall line using Bresenham's algorithm
+        int x1 = static_cast<int>(wall.x1);
+        int y1 = static_cast<int>(wall.y1);
+        int x2 = static_cast<int>(wall.x2);
+        int y2 = static_cast<int>(wall.y2);
+        drawLine(x1, y1, x2, y2, 0xFFFFFFFF);
     }
 }
 
@@ -203,13 +258,13 @@ int main()
         return -1;
     }
 
-    // Define the scene with walls
-    std::vector<Segment> scene = {
-        Segment(400, 400, 500, 500),
-        Segment(300, 100, 300, 300),
-        Segment(500, 600, 400, 500),
-        Segment(300, 300, 100, 300),
-        Segment(100, 300, 100, 100)};
+    gTexture = SDL_CreateTexture(renderer,
+                                 SDL_PIXELFORMAT_ARGB8888,
+                                 SDL_TEXTUREACCESS_STREAMING,
+                                 SCREEN_WIDTH,
+                                 SCREEN_HEIGHT);
+
+    SDL_SetTextureBlendMode(gTexture, SDL_BLENDMODE_BLEND);
 
     bool running = true;
     while (running)
@@ -229,20 +284,30 @@ int main()
         float rayOriginX = static_cast<float>(mouseX);
         float rayOriginY = static_cast<float>(mouseY);
 
-        // Clear the screen
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
+        if (SDL_LockTexture(gTexture, nullptr, &gPixels, &gPitch) < 0)
+        {
+            std::cerr << "SDL_LockTexture Error: " << SDL_GetError() << std::endl;
+            return 0;
+        }
+
+        gPixelPerRow = gPitch / sizeof(Uint32);
+        gPixelBuffer = static_cast<Uint32 *>(gPixels);
+        clearTexture();
 
         // Render walls and rays
-        renderScene(renderer, scene);
-        traceRays(renderer, rayOriginX, rayOriginY, scene);
+        traceRays(rayOriginX, rayOriginY);
+        drawWalls();
 
+        SDL_UnlockTexture(gTexture);
+
+        SDL_RenderCopy(renderer, gTexture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
     }
 
     // Cleanup SDL
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    SDL_DestroyTexture(gTexture);
     SDL_Quit();
 
     return 0;
