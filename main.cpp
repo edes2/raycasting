@@ -7,7 +7,6 @@
 // Screen dimensions
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define MAX_RAY_LENGTH 600.0f
 #define PI 3.14159265358979f
 #define ANGLE_STEP_DEG 0.05f
 
@@ -78,7 +77,7 @@ public:
         float u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den;
 
         // Check if intersection is valid
-        if (t > 0 && t < 1 && u > 0)
+        if (t >= 0 && t <= 1 && u >= 0)
         {
             // Calculate intersection point
             float px = x1 + t * (x2 - x1);
