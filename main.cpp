@@ -90,6 +90,29 @@ public:
     }
 };
 
+bool isPointOnSegment(int x, int y, const Segment &wall)
+{
+    float dx = wall.x2 - wall.x1;
+    float dy = wall.y2 - wall.y1;
+    float cross = (x - wall.x1) * dy - (y - wall.y1) * dx;
+    if (std::fabs(cross) > 0)
+        return false;
+
+    // Check if pt is between wall.x1,y1 and wall.x2,y2 using the bounding box method.
+    float minX = std::min(wall.x1, wall.x2);
+    float maxX = std::max(wall.x1, wall.x2);
+    float minY = std::min(wall.y1, wall.y2);
+    float maxY = std::max(wall.y1, wall.y2);
+
+    if (x < minX || x > maxX ||
+        y < minY || y > maxY)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void drawRay(float x1, float y1, float angle, float distance)
 {
     float k = 0.005f;
@@ -161,6 +184,10 @@ void traceRays(float originX, float originY)
         // Check the ray against all walls
         for (const Segment &wall : scene)
         {
+            if (isPointOnSegment(originX, originY, wall))
+            {
+                return; // could improve perf
+            }
             Point intersection = ray.cast(wall);
             float distance = hypot(intersection.x - originX, intersection.y - originY);
 
