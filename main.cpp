@@ -147,8 +147,6 @@ void traceRays(float originX, float originY)
     // We want to cover 360 degrees
     const int NUM_RAYS = static_cast<int>(360.0f / ANGLE_STEP_DEG);
 
-    const float stopOffset = 2.0f; // Par exemple, 2 pixels d'offset
-
     for (int i = 0; i < NUM_RAYS; ++i)
     {
         // Calculate the angle for this ray
